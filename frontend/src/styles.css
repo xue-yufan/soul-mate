@@ -1,0 +1,416 @@
+/* ============================================================
+   设计令牌
+   所有玻璃表面的配方集中在这里，改一处全局玻璃一起变。
+   ============================================================ */
+
+:root {
+    /* 玻璃光学参数 */
+    --glass-blur: 28px;
+    --glass-saturate: 180%; /* 键：让透过来的颜色更浓，是"高级"的主因 */
+    --glass-brightness: 1.06;
+    --glass-radius: 18px;
+
+    /* 玻璃底色（越透越吃背景，越不透明越保守） */
+    --glass-tint: rgba(28, 20, 50, 0.42);
+    --glass-tint-strong: rgba(20, 14, 36, 0.82);
+
+    /* 1px 边缘高光，玻璃的"厚度"全靠它 */
+    --glass-hairline: rgba(255, 255, 255, 0.1);
+    --glass-edge-top: rgba(255, 255, 255, 0.16);
+    --glass-edge-bottom: rgba(255, 255, 255, 0.04);
+    --glass-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
+
+    /* ---------- 内部表面 ----------
+       原先设置/知识库/工具卡里写死了不透明灰（#2a2a35 / #1a1a1f / #3a3a4a…），
+       放进玻璃弹窗后会变成一块块补丁、也吃不到透光。
+       统一改成"半透明白 + 白色发丝线"，让底下的玻璃透上来。 */
+    --surface-raised: rgba(255, 255, 255, 0.055); /* 卡片、输入框、徽标 */
+    --surface-sunken: rgba(0, 0, 0, 0.22); /* 代码块、内嵌凹槽 */
+    --surface-strong: rgba(255, 255, 255, 0.1); /* 按钮、可点区域 */
+    --surface-stronger: rgba(255, 255, 255, 0.16); /* 悬停 */
+    --hairline: rgba(255, 255, 255, 0.1); /* 原 #3a3a4a */
+    --hairline-soft: rgba(255, 255, 255, 0.07); /* 原 #333340 / #2a2a35 分隔线 */
+    --accent-soft: rgba(167, 139, 250, 0.6); /* 原 #5555aa 聚焦边框 */
+    --accent-surface: rgba(139, 108, 232, 0.52); /* 原 #4a4a7a 主按钮 */
+    --accent-surface-hover: rgba(162, 130, 255, 0.64); /* 原 #5a5a8a */
+
+    /* 语义色底：原 #3a2020 / #2a4a2a / #2a3a4a / #4a3a2a / #4a2a3a */
+    --tint-danger: rgba(224, 128, 128, 0.16);
+    --tint-success: rgba(128, 208, 128, 0.16);
+    --tint-info: rgba(128, 176, 208, 0.16);
+    --tint-warn: rgba(208, 176, 128, 0.16);
+    --tint-pink: rgba(208, 128, 176, 0.16);
+
+    --accent: 167, 139, 250; /* #a78bfa */
+    --bg-base: #0b0714;
+
+    /* 高频噪点：玻璃会把它抹平，这是"霜面感"的主要来源 */
+    --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---------- 基础 ---------- */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body,
+#app {
+    height: 100%;
+    font-family:
+        system-ui,
+        -apple-system,
+        "Segoe UI",
+        sans-serif;
+    color: #e8e8f0;
+    overflow: hidden;
+}
+
+body {
+    background: var(--bg-base);
+}
+
+/* ============================================================
+   背景层
+   玻璃要有"东西可模糊"才看得出来。平滑渐变被模糊等于没变，
+   所以这一层必须提供：明暗对比 + 高频噪点 + 斜向光带。
+   注意：这一层不能带 filter / opacity / transform，
+   否则它会成为 backdrop root，玻璃就采不到它了。
+   ============================================================ */
+
+.backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+
+    background:
+        /* 暗角：边缘压暗，中间的玻璃才像被照亮 */
+        radial-gradient(115% 95% at 50% 45%, transparent 42%, rgba(4, 2, 10, 0.72) 100%),
+        /* 极光团：三处光源，提供明暗对比 */
+        radial-gradient(ellipse 62% 55% at 18% 14%, rgba(96, 60, 190, 0.5) 0%, transparent 62%),
+        radial-gradient(ellipse 52% 50% at 88% 80%, rgba(58, 92, 220, 0.4) 0%, transparent 66%),
+        radial-gradient(ellipse 38% 38% at 62% 32%, rgba(198, 92, 188, 0.26) 0%, transparent 70%),
+        linear-gradient(135deg, #0f0a1a 0%, #1a1028 50%, #0d0818 100%);
+}
+
+/* 斜向光带：conic 的角向过渡被 blur 抹开，玻璃边缘就有明暗流动 */
+.backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    background: conic-gradient(
+        from 210deg at 38% 42%,
+        transparent 0deg,
+        rgba(167, 139, 250, 0.22) 45deg,
+        transparent 130deg,
+        rgba(99, 160, 255, 0.18) 205deg,
+        transparent 300deg
+    );
+}
+
+/* 噪点：高频细节，是"霜面"而非"塑料"的关键 */
+.backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: var(--noise);
+    background-size: 160px 160px;
+    opacity: 0.13;
+    mix-blend-mode: overlay;
+}
+
+/* ============================================================
+   通用玻璃表面
+   用法：<div class="glass-surface">，可用 CSS 变量按需覆盖，
+   例如 .my-panel { --glass-blur: 30px; --glass-tint: rgba(...); }
+   ============================================================ */
+
+.glass-surface {
+    position: relative;
+    background:
+        /* 斜向镜面高光：左上亮、右下透，模拟玻璃受光 */
+        linear-gradient(
+            160deg,
+            rgba(255, 255, 255, 0.1) 0%,
+            rgba(255, 255, 255, 0.03) 42%,
+            rgba(255, 255, 255, 0) 100%
+        ),
+        var(--glass-tint);
+
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate))
+        brightness(var(--glass-brightness));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate))
+        brightness(var(--glass-brightness));
+
+    border: 1px solid var(--glass-hairline);
+    border-radius: var(--glass-radius);
+    box-shadow:
+        var(--glass-shadow),
+        inset 0 1px 0 var(--glass-edge-top),
+        inset 0 -1px 0 var(--glass-edge-bottom);
+}
+
+/* 渐变高光描边：比 1px 实线精致得多（遮罩挖空中间，只留 1px 边框） */
+.glass-surface::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.45) 0%,
+        rgba(255, 255, 255, 0.05) 36%,
+        rgba(255, 255, 255, 0) 62%,
+        rgba(var(--accent), 0.35) 100%
+    );
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+}
+
+/* ============================================================
+   应用容器
+   ============================================================ */
+
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    position: relative;
+}
+
+/* ---------- 顶栏 ---------- */
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 24px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.01) 100%),
+        rgba(20, 15, 35, 0.48);
+    backdrop-filter: blur(22px) saturate(170%) brightness(1.05);
+    -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(1.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    z-index: 10;
+}
+
+.topbar .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+}
+
+/* 顶栏头像：用的就是面板里那张立绘，靠 object-position 取头顶那一块，
+   跟 CharacterPanel 的圆形取景同一套裁法，不额外生成文件 */
+.brand-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: top center;
+    border: 1px solid rgba(167, 139, 250, 0.38);
+    box-shadow: 0 0 12px rgba(120, 80, 200, 0.35);
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+.topbar .title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    background: linear-gradient(90deg, #c4b5fd 0%, #a78bfa 50%, #818cf8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.topbar-right {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.topbar .status {
+    font-size: 11px;
+    color: #7a7a9a;
+    padding: 4px 10px;
+    background: rgba(40, 30, 60, 0.38);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.topbar .status-starting {
+    color: #d0a040;
+}
+
+.topbar .status-ready {
+    color: #7ec8a0;
+}
+
+.topbar .status-stopped {
+    color: #7a7a9a;
+}
+
+.topbar .status-error {
+    color: #e08080;
+}
+
+/* ---------- 顶栏图标按钮 ---------- */
+
+.icon-btn {
+    /* 图标是 16px 的 SVG，按钮里居中靠这个，别再依赖字号撑高度 */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.01) 100%),
+        rgba(40, 30, 60, 0.42);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 10px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    color: #c8c8e0;
+    transition:
+        background 0.2s,
+        border-color 0.2s,
+        box-shadow 0.2s,
+        transform 0.2s;
+    backdrop-filter: blur(10px) saturate(160%);
+    -webkit-backdrop-filter: blur(10px) saturate(160%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.icon-btn:hover {
+    border-color: rgba(167, 139, 250, 0.42);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 100%),
+        rgba(60, 45, 90, 0.55);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.16),
+        0 4px 14px rgba(167, 139, 250, 0.28);
+}
+
+.icon-btn.active {
+    background: rgba(80, 60, 140, 0.5);
+    border-color: rgba(167, 139, 250, 0.5);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        0 0 16px rgba(167, 139, 250, 0.32);
+}
+
+/* ---------- 主区 ---------- */
+
+.main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    /* 明确压在 .backdrop 之上 */
+    z-index: 1;
+}
+
+/* ---------- 角色区（左侧） ---------- */
+
+/* 立绘在左，对话框在右。
+   宽度比例不写死：这里占 32%，剩下都归对话框，改比例只动这一个数。 */
+.character {
+    flex: 0 0 32%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+}
+
+.character::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 60%, rgba(167, 139, 250, 0.15) 0%, transparent 60%);
+    pointer-events: none;
+}
+
+/* ---------- 聊天区（右侧，占大头） ---------- */
+
+.chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* 面板与窗口边框之间的留白。
+       这个值要比面板内部那条 1px 发丝线大一个量级（20 : 1），
+       两块面才分得开、有"浮起来"的层次；贴着边反而糊成一片。 */
+    padding: 20px;
+}
+
+/* ---------- 状态栏 ---------- */
+
+.statusbar {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 24px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.01) 0%, rgba(255, 255, 255, 0.05) 100%),
+        rgba(15, 10, 25, 0.42);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    font-size: 11px;
+    color: #6a6a8a;
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    position: relative;
+    z-index: 1;
+}
+
+/* ============================================================
+   降级与无障碍
+   ============================================================ */
+
+/* 不支持 backdrop-filter：改用更不透明的底色，避免文字糊在背景上 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass-surface,
+    .topbar,
+    .statusbar {
+        background: var(--glass-tint-strong);
+    }
+
+    .backdrop::after {
+        opacity: 0.06;
+    }
+}
+
+/* 系统开启"减少透明度"：关掉模糊，只留色调 */
+@media (prefers-reduced-transparency: reduce) {
+    .glass-surface,
+    .topbar,
+    .statusbar,
+    .icon-btn {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+
+    .glass-surface,
+    .topbar,
+    .statusbar {
+        background: var(--glass-tint-strong);
+    }
+}

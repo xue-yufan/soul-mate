@@ -1,0 +1,122 @@
+{
+    "name": "soul-mate-frontend",
+    "version": "0.1.0",
+    "description": "Soul Mate — 本地运行的 AI 伴侣桌面端（Electron + Vue 渲染层，Python 后端随包附带）",
+    "author": "Soul Mate",
+    "private": true,
+    "type": "module",
+    "main": "out/main/index.js",
+    "scripts": {
+        "dev": "electron-vite dev",
+        "build": "npm run typecheck && electron-vite build",
+        "typecheck": "vue-tsc --noEmit && tsc --noEmit -p electron/tsconfig.json",
+        "preview": "electron-vite preview",
+        "electron:build": "npm run build && electron-builder",
+        "dist": "npm run build && electron-builder --win --x64",
+        "dist:portable": "npm run build && electron-builder --win portable --x64",
+        "dist:dir": "npm run build && electron-builder --dir",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "format": "prettier --write \"src/**/*.{ts,vue,css}\" \"electron/**/*.ts\"",
+        "format:check": "prettier --check \"src/**/*.{ts,vue,css}\" \"electron/**/*.ts\""
+    },
+    "dependencies": {
+        "@pixiv/three-vrm": "^3.5.5",
+        "dompurify": "^3.4.16",
+        "highlight.js": "^11.12.0",
+        "marked": "^18.1.0",
+        "marked-highlight": "^2.2.4",
+        "three": "^0.186.1",
+        "vue": "^3.5.0"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@types/node": "^22.7.0",
+        "@types/three": "^0.186.0",
+        "@vitejs/plugin-vue": "^6.0.9",
+        "electron": "^32.0.0",
+        "electron-builder": "^26.15.3",
+        "electron-vite": "^5.0.0",
+        "eslint": "^10.12.0",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-vue": "^10.11.1",
+        "globals": "^17.13.0",
+        "prettier": "^3.9.10",
+        "typescript": "^5.6.0",
+        "typescript-eslint": "^8.71.2",
+        "vite": "^7.3.6",
+        "vue-tsc": "^2.1.0"
+    },
+    "build": {
+        "appId": "com.soulmate.app",
+        "productName": "Soul Mate",
+        "directories": {
+            "output": "release",
+            "buildResources": "build"
+        },
+        "files": [
+            "out/**/*",
+            "!out/renderer/model/xiadie01/**/*",
+            "!out/renderer/model/xiadie02/**/*",
+            "!out/renderer/xiadie/**/*",
+            "!node_modules/**/*",
+            "package.json"
+        ],
+        "electronLanguages": [
+            "zh-CN",
+            "en-US"
+        ],
+        "extraResources": [
+            {
+                "from": "../backend",
+                "to": "backend",
+                "filter": [
+                    "**/*",
+                    "!data/**",
+                    "!.venv/**",
+                    "!__pycache__/**",
+                    "!**/__pycache__/**",
+                    "!tests/**",
+                    "!scripts/**",
+                    "!*.pyc",
+                    "!.pytest_cache/**",
+                    "!config.local.yaml",
+                    "!config.overrides.yaml",
+                    "!config.overrides.yaml.tmp",
+                    "!**/.git/**",
+                    "!**/.ruff_cache/**",
+                    "!.gitignore",
+                    "!.python-version"
+                ]
+            },
+            {
+                "from": "vendor/uv/uv.exe",
+                "to": "backend/uv.exe"
+            }
+        ],
+        "electronDownload": {
+            "mirror": "https://npmmirror.com/mirrors/electron/"
+        },
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ]
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": false,
+            "allowToChangeInstallationDirectory": true,
+            "createDesktopShortcut": true,
+            "createStartMenuShortcut": true,
+            "shortcutName": "Soul Mate"
+        },
+        "portable": {
+            "artifactName": "Soul-Mate-Portable-${version}.exe"
+        }
+    }
+}
