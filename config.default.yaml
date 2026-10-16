@@ -1,0 +1,163 @@
+# =============================================================================
+# 出厂默认配置（完整参考）
+#
+# 本文件覆盖全部配置段，是"到底有哪些配置项"的唯一完整清单。
+# 代码里的兜底默认值在 app/config.py；二者绝大部分一致，个别地方以本文件为准
+# 并就近写了说明（例如 server.cors_origins）。
+#
+# 三个 YAML 按顺序深度合并，后者覆盖前者：
+#   1. config.default.yaml    出厂默认（本文件）—— 不要改这里
+#   2. config.local.yaml      本机覆盖，只写要改的字段（已被 .gitignore 排除）
+#   3. config.overrides.yaml  设置面板写入（自动生成，别手改）
+# 最后环境变量（SOUL_MATE_ 前缀 + __ 分隔）覆盖以上全部。
+#
+# 注意：某个键一旦有对应环境变量，改 YAML 就不会生效。
+# 设置面板会把这类字段标成"被环境变量固定"并拒绝写入。
+# =============================================================================
+
+schema_version: 1
+
+app:
+  name: soul-mate-backend
+  version: 0.1.0
+  env: dev                       # dev / prod；prod 下 uvicorn 不启用 reload
+
+server:
+  host: 127.0.0.1
+  port: 8000
+  ws_path: /ws
+  # 打包后渲染层是 file:// 页面，请求带的 Origin 是字符串 "null"，
+  # 不在白名单里就会被浏览器拦掉（表现为设置面板「读取失败：Failed to fetch」）。
+  # 开发版的 localhost:5173 写在 config.local.yaml 里。
+  # 注意：这个列表是整体替换而不是追加，local 里写了的会盖掉这里。
+  cors_origins:
+    - "null"
+  shutdown_timeout_s: 10.0
+  ws_notify_delay_s: 0.3
+
+logging:
+  level: INFO
+  console: true
+  max_bytes: 10485760            # 单个日志文件上限（字节），默认 10MB
+  backup_count: 5
+
+paths:
+  data_dir: ./data
+  # 以下路径由 data_dir 自动派生（见 PathsConfig 的 property），写在这里无效：
+  #   sqlite_path   = <data_dir>/soul_mate.db
+  #   log_dir       = <data_dir>/logs
+  #   log_file      = <data_dir>/logs/backend.log
+  #   chroma_dir    = <data_dir>/chroma
+  #   documents_dir = <data_dir>/documents
+  # 换位置请改 data_dir。
+  embed_model_dir: null          # 本地嵌入模型目录；启用记忆/RAG 时必填
+  # 例：embed_model_dir: "D:/my_local_model/paraphrase-multilingual-MiniLM-L12-v2"
+
+database:
+  timeout_s: 5
+
+contracts:
+  ws_event_version: 1            # 每个 WS 事件都会带上，前端据此判断协议版本
+
+# 功能总开关：这是**唯一**的功能闸门。
+# 各模块自己的 *.enabled 字段已删除——代码里从来只读这里。
+features:
+  tools: false
+  memory: false
+  rag: false
+  tts: false
+
+model:
+  adapter: openai_compatible
+  provider: deepseek
+  base_url: https://api.deepseek.com
+  api_key: ""                    # 建议写在 config.local.yaml 或设置面板里
+  model: deepseek-chat
+  timeout_s: 60                  # 读取超时（秒）：两段流式内容之间最多等多久
+  connect_timeout_s: 10          # 连接超时（秒）：断网时快速失败，不干等
+  max_retries: 2                 # 限流 / 5xx / 网络抖动的重试次数（只重试还没出内容的那次）
+  retry_base_delay_s: 0.5        # 重试退避基数（秒）：0.5、1.0、2.0…
+  max_tokens: 2048
+  temperature: 0.7
+
+persona:
+  file: ./app/persona/persona.yaml   # 人格文件；启动时无条件加载，缺失会启动失败
+
+agent:
+  history_turns: 6               # 每轮携带的历史对话轮数
+  summary_trigger_tokens: 3000   # 超过则做摘要；0 表示不摘要
+  summary_keep_recent_turns: 3   # 摘要后保留的最近轮数（不参与摘要）
+  max_tool_steps: 5              # 单轮最多工具调用步数
+  recursion_limit: 10            # 图执行递归上限
+  run_timeout_s: 120             # 单轮执行总超时（秒）
+  default_session_id: default    # 单用户单会话，前端不带 session_id 时用它
+
+cost:
+  currency: CNY
+  budget: 30.0
+  warn_ratio: 0.8
+  # 注意：budget / warn_ratio 目前只被 /config/public 读出来展示，
+  # 没有任何代码据此拦截或告警；prices 里没有的模型名会静默按 0 成本计算。
+  prices:
+    deepseek-chat:
+      input_per_1k: 0.001
+      output_per_1k: 0.002
+    deepseek-reasoner:
+      input_per_1k: 0.004
+      output_per_1k: 0.016
+
+embedding:
+  device: cpu
+  batch_size: 16
+  normalize: true
+
+memory:
+  extract_per_turn: true
+  top_k: 10                      # 召回条数
+  min_importance: 0.3            # 低于此重要度不写入
+  time_decay_days: 30            # 时间衰减半衰期
+  conflict_policy: persona_first # persona_first / newest_first
+
+tools:
+  allowed_dirs: []               # read_file 白名单，空表示不限
+
+permission:
+  default: confirm               # allow / confirm / deny
+  overrides: {}                  # 按工具名覆盖，例：{"read_file": "allow"}
+  confirm_timeout_s: 30.0        # 超时未回应按拒绝处理
+
+rag:
+  top_k: 5
+  min_similarity: 0.3
+  chunk_size: 500
+  chunk_overlap: 100
+  max_chunks_per_doc: 500
+  worldbook_top_k: 3
+  worldbook_keyword_boost: 0.3
+
+tts:
+  provider: edge                 # edge / volcengine / aliyun
+  voice: zh-CN-XiaoxiaoNeural
+  rate: "+0%"                    # 语速，Edge 格式
+  volume: "+0%"                  # 音量，Edge 格式
+  sentence_min_len: 4            # 短于此长度的句子不单独合成
+  sentence_max_len: 120          # 超过则强制断句
+  max_chars_per_turn: 2000       # 单轮合成字符上限
+  # ---------- 非 edge 提供方（本地引擎走 HTTP）----------
+  # 注意：pydantic 的 extra=ignore 会静默丢弃未声明的键——这里写了就必须同时在
+  # app/config.py 的 TtsConfig 里声明，否则等于没写、还不报错
+  base_url: ""                   # 例如 http://127.0.0.1:9880
+  ref_audio: ""                  # 参考音频路径（音色克隆用）
+  prompt_text: ""                # 参考音频对应的文本
+  timeout_s: 60.0                # 单句合成超时（秒）
+  # 本地引擎目录（要有 pyproject.toml）；填了才会在后端启动时后台拉起它
+  engine_dir: ""                 # 例如 D:/GPT-SoVITS
+  # 采样参数：控制"起伏"。默认与引擎默认一致（音色最稳）；
+  # 想更有起伏就试 temperature 1.2~1.4，代价是音色会飘一点
+  temperature: 1.0
+  top_k: 15
+  top_p: 1.0
+  # 按情绪分文件的参考音频目录：<情绪>.wav + <情绪>.txt（happy.wav/happy.txt …）
+  # 留空、或某个情绪没素材 → 回落上面的 ref_audio + prompt_text
+  ref_audio_dir: ""
+  # 音频格式固定 mp3（适配器与前端都按 mp3 处理），没有可配项

@@ -1,0 +1,25 @@
+schema_version: 1
+
+app:
+  # dev / prod。prod 下不启用 reload（见 app/main.py），日志级别由 logging.level 控制
+  env: dev
+
+server:
+  host: 127.0.0.1
+  port: 8000
+  ws_path: /ws
+  # 开发时渲染层跑在 vite dev server 上，Origin 是 localhost:5173；
+  # 少了这段，设置面板会显示「读取失败：Failed to fetch」
+  cors_origins:
+    - http://localhost:5173
+    - http://127.0.0.1:5173
+
+logging:
+  level: INFO
+
+paths:
+  data_dir: ./data
+  # 以下路径由 data_dir 自动派生（见 PathsConfig 的 property），不要在此配置：
+  #   sqlite_path = <data_dir>/soul_mate.db
+  #   log_dir     = <data_dir>/logs
+  #   log_file    = <data_dir>/logs/backend.log
