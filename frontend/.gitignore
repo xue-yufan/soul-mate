@@ -1,0 +1,19 @@
+node_modules/
+dist/
+release/
+out/
+.vite/
+*.log
+.DS_Store
+
+# 为后端改动做的手工备份，里面有 config.local.yaml 的副本（含 API Key），不要提交
+_stage/
+
+# uv.exe 等外部二进制，不入库
+vendor/
+
+# 第三方模型资源（Q 版遐蝶 VRM + 两套 MMD 原模型，共约 69MB）。
+# 授权写着「请勿二次配布」，而且体积大，所以不入库；
+# 需要时按 docs/3d-character-plan.md 说明自行放回 public/model/ 与 public/xiadie/。
+public/model/
+public/xiadie/

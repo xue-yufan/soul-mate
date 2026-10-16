@@ -1,0 +1,13 @@
+node_modules
+out
+release
+dist
+.vite
+public
+vendor
+_stage
+# 桌宠：独立的 Electron 应用，验证阶段先不跟主项目统一格式
+pet
+*.log
+*.md
+package-lock.json

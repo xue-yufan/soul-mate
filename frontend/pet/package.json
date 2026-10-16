@@ -1,0 +1,19 @@
+{
+    "name": "soul-mate-pet",
+    "version": "0.0.0",
+    "private": true,
+    "description": "桌面宠物：透明窗口 + 置顶 + 点击穿透 + three.js 渲染她的形象",
+    "main": "main.cjs",
+    "scripts": {
+        "start": "electron .",
+        "start:opaque": "electron . --no-transparent",
+        "start:framed": "electron . --framed",
+        "start:no-glass": "electron . --no-glass",
+        "start:no-webgl": "electron . --no-webgl",
+        "start:plain": "electron . --no-glass --no-webgl",
+        "start:shared": "..\\node_modules\\.bin\\electron.cmd ."
+    },
+    "devDependencies": {
+        "electron": "32.3.3"
+    }
+}

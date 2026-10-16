@@ -39,3 +39,6 @@ npm run dist     # 打包 Windows 安装包
 ## 配置与机密
 
 以下内容不入库：`config.local.yaml`、`config.overrides.yaml`、`.env`、`backend/data/`（SQLite 与日志）、`frontend/_stage/`（含 Key 的备份）、`node_modules/`、`.venv/`、`release/`、`out/`。提交前请确认没有把真实 API Key 带进版本库。
+
+第三方模型资源同样不入库：`frontend/public/model/`（Q 版遐蝶 VRM 与两套 MMD 原模型，约 69MB，授权为「请勿二次配布」）和 `frontend/public/xiadie/`（旧 Live2D 资源）。缺了它们不影响编译，只是 3D 形象会退回立绘；需要时按 [docs/3d-character-plan.md](docs/3d-character-plan.md) 的说明自行放回对应目录。
+

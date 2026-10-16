@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="zh-CN">
+    <head>
+        <meta charset="UTF-8" />
+        <title>3D shell spike</title>
+        <style>
+            /* 窗口整体透明：桌面上直接看到这层内容 */
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
+            html,
+            body {
+                height: 100%;
+                background: transparent;
+                overflow: hidden;
+                font-family: system-ui, "Segoe UI", sans-serif;
+                color: #e8e8f0;
+                user-select: none;
+            }
+
+            /* ---------- 1. WebGL 层（在最底下） ---------- */
+
+            #gl {
+                position: fixed;
+                inset: 0;
+                /* 压在背景层之上、玻璃面板之下——真实应用里 3D 模型也该在这一层 */
+                z-index: 1;
+                display: block;
+                /* 故意不设 background：透明与否全看 WebGL 自己的 clearColor 和 alpha */
+            }
+
+            /* ---------- 2. 背景层：玻璃要有"东西可模糊" ---------- */
+
+            .backdrop {
+                position: fixed;
+                inset: 0;
+                z-index: 0;
+                pointer-events: none;
+                background:
+                    radial-gradient(
+                        ellipse 62% 55% at 18% 14%,
+                        rgba(96, 60, 190, 0.5) 0%,
+                        transparent 62%
+                    ),
+                    radial-gradient(
+                        ellipse 52% 50% at 88% 80%,
+                        rgba(58, 92, 220, 0.4) 0%,
+                        transparent 66%
+                    ),
+                    radial-gradient(
+                        ellipse 38% 38% at 62% 32%,
+                        rgba(198, 92, 188, 0.26) 0%,
+                        transparent 70%
+                    ),
+                    /* 故意留 0.72 的不透明度：整块不透明会把桌面完全挡住，
+                       第一眼根本看不出"窗口是透明的"——这正是个容易误导的默认值。
+                       想看纯透明，按「背景层」把它整个关掉。 */
+                    linear-gradient(
+                        135deg,
+                        rgba(15, 10, 26, 0.72) 0%,
+                        rgba(26, 16, 40, 0.72) 50%,
+                        rgba(13, 8, 24, 0.72) 100%
+                    );
+            }
+
+            .backdrop::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                opacity: 0.13;
+                mix-blend-mode: overlay;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+                background-size: 160px 160px;
+            }
+
+            body.no-backdrop .backdrop {
+                display: none;
+            }
+
+            /* ---------- 3. 玻璃层：主应用真正在用的那套配方 ---------- */
+
+            /* 顶部两件套：她的气泡（玻璃） + 对照组。窄窗里竖着叠、占满宽度。 */
+            .top-stack {
+                position: fixed;
+                left: 10px;
+                right: 10px;
+                top: 10px;
+                z-index: 2;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .glass {
+                border-radius: 14px;
+                background: linear-gradient(
+                        160deg,
+                        rgba(255, 255, 255, 0.1) 0%,
+                        rgba(255, 255, 255, 0.03) 42%,
+                        rgba(255, 255, 255, 0) 100%
+                    ),
+                    rgba(28, 20, 50, 0.42);
+                backdrop-filter: blur(30px) saturate(180%) brightness(1.06);
+                -webkit-backdrop-filter: blur(30px) saturate(180%) brightness(1.06);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                box-shadow:
+                    0 10px 28px rgba(0, 0, 0, 0.38),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+                padding: 12px 14px;
+                font-size: 12px;
+                line-height: 1.6;
+            }
+
+            /* 对照组：同样的底色，但没有 backdrop-filter */
+            .solid {
+                border-radius: 14px;
+                background: rgba(28, 20, 50, 0.72);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                padding: 10px 14px;
+                font-size: 11px;
+                line-height: 1.6;
+            }
+
+            body.no-glass .glass {
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+                background: rgba(28, 20, 50, 0.72);
+            }
+
+            /* ---------- 4. HUD：读数 + 按钮 ---------- */
+
+            /* 读数面板默认收起来——窗口只有 360 宽，摊开会把她整个盖住。
+               点右下角的 ≡ 或按 H 展开。 */
+            .hud {
+                position: fixed;
+                left: 10px;
+                right: 10px;
+                bottom: 52px;
+                z-index: 3;
+                max-height: 58%;
+                overflow: auto;
+                padding: 12px 14px;
+                border-radius: 14px;
+                background: rgba(10, 8, 20, 0.86);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                font-size: 12px;
+                line-height: 1.7;
+            }
+
+            body.hud-collapsed .hud {
+                display: none;
+            }
+
+            #hud-toggle {
+                position: fixed;
+                right: 10px;
+                bottom: 10px;
+                z-index: 4;
+                width: 32px;
+                height: 32px;
+                padding: 0;
+                font-size: 14px;
+                line-height: 1;
+                border-radius: 10px;
+            }
+
+            .hud h1 {
+                font-size: 13px;
+                letter-spacing: 1px;
+                margin-bottom: 10px;
+                color: #c4b5fd;
+            }
+
+            .hud pre {
+                font-family: ui-monospace, Consolas, monospace;
+                font-size: 11px;
+                white-space: pre-wrap;
+                word-break: break-all;
+                color: #c8c8d8;
+            }
+
+            .row {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin: 10px 0;
+            }
+
+            button {
+                background: rgba(139, 108, 232, 0.35);
+                color: #e8e8f0;
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                border-radius: 8px;
+                padding: 5px 10px;
+                font-size: 12px;
+                cursor: pointer;
+            }
+
+            button:hover {
+                background: rgba(162, 130, 255, 0.45);
+            }
+
+            .keys {
+                margin-top: 10px;
+                color: #9a9ac0;
+                font-size: 11px;
+                line-height: 1.8;
+            }
+
+            kbd {
+                background: rgba(255, 255, 255, 0.12);
+                border-radius: 4px;
+                padding: 1px 5px;
+                font-family: ui-monospace, monospace;
+            }
+        </style>
+    </head>
+    <body class="hud-collapsed">
+        <!-- 1. WebGL 层（透明与否看它自己的 alpha） -->
+        <canvas id="gl"></canvas>
+
+        <!-- 2. 被模糊物 -->
+        <div class="backdrop"></div>
+
+        <!-- 3. 气泡（玻璃）+ 对照组 -->
+        <div class="top-stack">
+            <div class="glass">
+                <strong>气泡（玻璃）</strong><br />
+                blur(30px) saturate(180%)<br />
+                <span style="color: #d0c0a0"
+                    >注意：透明区域照样会吃掉点击（按 P 全局穿透）</span
+                >
+            </div>
+            <div class="solid">
+                <strong>对照</strong>：同样的底色，没有 backdrop-filter
+            </div>
+        </div>
+        <button id="hud-toggle" title="读数面板（H）">≡</button>
+
+        <!-- 4. 读数 -->
+        <div class="hud">
+            <h1>3D SHELL SPIKE</h1>
+            <pre id="state">读取中…</pre>
+            <div class="row">
+                <button id="btn-glass">玻璃 (G)</button>
+                <button id="btn-alpha">WebGL alpha (W)</button>
+                <button id="btn-backdrop">背景层</button>
+                <button id="btn-lose">丢上下文</button>
+            </div>
+            <div class="row">
+                <button id="btn-top">置顶 (T)</button>
+                <button id="btn-through">点击穿透 (P)</button>
+            </div>
+            <div class="keys">
+                <strong style="color: #d0c0a0"
+                    >第一眼看不出透明是正常的（背景层默认盖着窗口）：想验证透明，先点「背景层」把它关掉。</strong
+                ><br />
+                窗口级开关只能走键盘，因为开了穿透之后页面收不到鼠标：
+                <br /><kbd>T</kbd> 置顶 · <kbd>P</kbd> 穿透 · <kbd>G</kbd> 玻璃 ·
+                <kbd>W</kbd> alpha · <kbd>R</kbd> 重载 · <kbd>Esc</kbd> 退出
+            </div>
+        </div>
+
+        <script>
+            const params = new URLSearchParams(location.search);
+            const state = {
+                transparent: params.get("transparent") !== "false",
+                glass: params.get("glass") !== "false",
+                webgl: params.get("webgl") !== "false",
+                // premultipliedAlpha 是"透明窗口里 WebGL 边缘发黑"最常见的元凶，
+                // 所以把它做成可切换的一条
+                premultiplied: true,
+                clickThrough: false,
+                alwaysOnTop: true,
+                fps: 0,
+            };
+
+            const stateBox = document.getElementById("state");
+            const env = {
+                electron: "?",
+                chrome: "?",
+                platform: "?",
+            };
+
+            function renderState() {
+                stateBox.textContent = [
+                    `electron ${env.electron} / chrome ${env.chrome}`,
+                    `${env.platform}`,
+                    `transparent=${state.transparent}  glass=${state.glass}`,
+                    `webgl=${state.webgl}  premultipliedAlpha=${state.premultiplied}`,
+                    `renderer=${glRenderer()}`,
+                    `clickThrough=${state.clickThrough}  alwaysOnTop=${state.alwaysOnTop}`,
+                    `fps=${state.fps.toFixed(0)}  dpr=${window.devicePixelRatio}`,
+                ].join("\n");
+            }
+
+            /**
+             * 真正在跑的渲染后端
+             *
+             * 这条比 fps 重要：如果是 SwiftShader / "Software"，那么黑边、帧率、
+             * 合成的所有观察都只是软件路径的行为，不能代表真实场景。
+             */
+            function glRenderer() {
+                if (!gl) return "（无 WebGL 上下文）";
+                const ext = gl.getExtension("WEBGL_debug_renderer_info");
+                const raw = ext
+                    ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
+                    : gl.getParameter(gl.RENDERER);
+                return String(raw);
+            }
+
+            // ---------- WebGL ----------
+
+            const VERT = `#version 300 es
+in vec2 pos;
+in float shade;
+uniform float uAspect;
+out float vShade;
+void main() {
+    vShade = shade;
+    // 窄窗要按纵横比修正，否则三角形（以及将来的模型）会被拉长
+    gl_Position = vec4(pos.x / uAspect, pos.y, 0.0, 1.0);
+}`;
+
+            // 输出的是「预乘」颜色（rgb 已经乘过 alpha），配合 ONE / ONE_MINUS_SRC_ALPHA
+            const FRAG = `#version 300 es
+precision mediump float;
+in float vShade;
+out vec4 outColor;
+void main() {
+    vec3 rgb = vec3(0.45, 0.30, 0.95) * vShade;
+    float a = vShade;
+    outColor = vec4(rgb * a, a);
+}`;
+
+            let gl = null;
+            let program = null;
+            let uAspect = null;
+            let raf = 0;
+
+            function compile(type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    throw new Error(gl.getShaderInfoLog(shader));
+                }
+                return shader;
+            }
+
+            /**
+             * 新建一张 canvas 再拿上下文
+             *
+             * 同一个 canvas 只能拿一次上下文、且属性不可改，所以切换
+             * premultipliedAlpha 必须换 canvas（这也顺便测了上下文重建）。
+             */
+            function createGL() {
+                const old = document.getElementById("gl");
+                if (old) old.remove();
+                const canvas = document.createElement("canvas");
+                canvas.id = "gl";
+                document.body.prepend(canvas);
+
+                gl = canvas.getContext("webgl2", {
+                    alpha: true,
+                    premultipliedAlpha: state.premultiplied,
+                    antialias: true,
+                    preserveDrawingBuffer: false,
+                });
+                if (!gl) {
+                    stateBox.textContent = "拿不到 webgl2 上下文";
+                    return;
+                }
+
+                program = gl.createProgram();
+                gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT));
+                gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAG));
+                gl.linkProgram(program);
+                gl.useProgram(program);
+                uAspect = gl.getUniformLocation(program, "uAspect");
+
+                const buffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+                gl.bufferData(
+                    gl.ARRAY_BUFFER,
+                    new Float32Array([
+                        // x, y, shade
+                        0.0, 0.55, 1.0,
+                        -0.55, -0.35, 0.55,
+                        0.55, -0.35, 1.0,
+                    ]),
+                    gl.STATIC_DRAW,
+                );
+
+                const posLoc = gl.getAttribLocation(program, "pos");
+                gl.enableVertexAttribArray(posLoc);
+                gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 12, 0);
+
+                const shadeLoc = gl.getAttribLocation(program, "shade");
+                gl.enableVertexAttribArray(shadeLoc);
+                gl.vertexAttribPointer(shadeLoc, 1, gl.FLOAT, false, 12, 8);
+
+                // 透明窗口的关键：清成完全透明，且用预乘/非预乘两套混合
+                gl.clearColor(0, 0, 0, 0);
+                gl.enable(gl.BLEND);
+                if (state.premultiplied) {
+                    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+                } else {
+                    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                }
+
+                resize(canvas);
+            }
+
+            function resize(canvas) {
+                const dpr = window.devicePixelRatio || 1;
+                const width = Math.floor(window.innerWidth * dpr);
+                const height = Math.floor(window.innerHeight * dpr);
+                if (canvas.width !== width || canvas.height !== height) {
+                    canvas.width = width;
+                    canvas.height = height;
+                }
+                gl.viewport(0, 0, canvas.width, canvas.height);
+                if (uAspect !== null) {
+                    gl.uniform1f(uAspect, canvas.width / canvas.height);
+                }
+            }
+
+            let last = performance.now();
+            let frames = 0;
+            let acc = 0;
+
+            function frame(now) {
+                raf = requestAnimationFrame(frame);
+
+                const dt = now - last;
+                last = now;
+                acc += dt;
+                frames += 1;
+                if (acc >= 500) {
+                    state.fps = (frames * 1000) / acc;
+                    acc = 0;
+                    frames = 0;
+                    renderState();
+                }
+
+                if (!gl || state.webgl === false) return;
+                const canvas = document.getElementById("gl");
+                if (!canvas) return;
+
+                resize(canvas);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+
+                // 顶点里带了 shade，这里让整个三角形缓慢旋转
+                const angle = now / 2600;
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                const base = [
+                    0.0, 0.55, 1.0, -0.55, -0.35, 0.55, 0.55, -0.35, 1.0,
+                ];
+                const rotated = [];
+                for (let i = 0; i < base.length; i += 3) {
+                    const x = base[i];
+                    const y = base[i + 1];
+                    rotated.push(x * cos - y * sin, x * sin + y * cos, base[i + 2]);
+                }
+                gl.bufferData(
+                    gl.ARRAY_BUFFER,
+                    new Float32Array(rotated),
+                    gl.STATIC_DRAW,
+                );
+                gl.drawArrays(gl.TRIANGLES, 0, 3);
+            }
+
+            // ---------- 交互 ----------
+
+            function toggleGlass() {
+                state.glass = !state.glass;
+                document.body.classList.toggle("no-glass", !state.glass);
+                renderState();
+            }
+
+            function toggleAlpha() {
+                state.premultiplied = !state.premultiplied;
+                createGL();
+                renderState();
+            }
+
+            function toggleBackdrop() {
+                document.body.classList.toggle("no-backdrop");
+            }
+
+            /** 窗口只有 360 宽，读数面板默认收起来（body.hud-collapsed） */
+            function setHudCollapsed(collapsed) {
+                document.body.classList.toggle("hud-collapsed", collapsed);
+                document.getElementById("hud-toggle").textContent = collapsed
+                    ? "≡"
+                    : "✕";
+            }
+
+            document.getElementById("hud-toggle").onclick = () => {
+                setHudCollapsed(!document.body.classList.contains("hud-collapsed"));
+            };
+
+            window.addEventListener("keydown", (event) => {
+                if (event.key.toLowerCase() !== "h") return;
+                setHudCollapsed(!document.body.classList.contains("hud-collapsed"));
+            });
+
+            document.getElementById("btn-glass").onclick = toggleGlass;
+            document.getElementById("btn-alpha").onclick = toggleAlpha;
+            document.getElementById("btn-backdrop").onclick = toggleBackdrop;
+            document.getElementById("btn-lose").onclick = () => {
+                const ext = gl && gl.getExtension("WEBGL_lose_context");
+                if (ext) ext.loseContext();
+                setTimeout(createGL, 800);
+            };
+            document.getElementById("btn-top").onclick = async () => {
+                state.alwaysOnTop = await window.spike.setAlwaysOnTop(
+                    !state.alwaysOnTop,
+                );
+                renderState();
+            };
+            document.getElementById("btn-through").onclick = async () => {
+                state.clickThrough = await window.spike.setClickThrough(true);
+                renderState();
+            };
+
+            window.spike.onToggleGlass(toggleGlass);
+            window.spike.onToggleWebglAlpha(toggleAlpha);
+            window.spike.onState((next) => {
+                state.clickThrough = next.clickThrough;
+                state.alwaysOnTop = next.alwaysOnTop;
+                renderState();
+            });
+
+            window.addEventListener("resize", () => {
+                const canvas = document.getElementById("gl");
+                if (canvas && gl) resize(canvas);
+            });
+
+            // ---------- 启动 ----------
+
+            document.body.classList.toggle("no-glass", !state.glass);
+
+            window.spike.info().then((info) => {
+                env.electron = info.electron;
+                env.chrome = info.chrome;
+                env.platform = info.platform;
+                // 主动拉初值：别指望主进程 ready-to-show 时那次推送一定被收到
+                if (info.state) {
+                    state.clickThrough = info.state.clickThrough;
+                    state.alwaysOnTop = info.state.alwaysOnTop;
+                }
+                renderState();
+            });
+
+            if (state.webgl) createGL();
+            renderState();
+            raf = requestAnimationFrame(frame);
+
+            window.addEventListener("beforeunload", () => cancelAnimationFrame(raf));
+        </script>
+    </body>
+</html>
