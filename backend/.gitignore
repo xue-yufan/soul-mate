@@ -1,0 +1,30 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# 本地配置（可能含 API Key 等机密），只提交 config.local.example.yaml
+config.local.yaml
+
+# 设置面板写入的覆盖配置，同样可能含 API Key；由 PATCH /config 自动生成
+config.overrides.yaml
+config.overrides.yaml.tmp
+
+# 运行时数据（SQLite、日志）与测试产物
+data/
+.pytest_cache/
+.ruff_cache/
+
+# 临时 / 备份数据目录
+data-test/
+data.bak/
+
+# 导出包
+*.zip
+soul-mate-*.zip
