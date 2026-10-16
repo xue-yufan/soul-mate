@@ -1,0 +1,14 @@
+# 工具生成的 ACL 恢复数据，不入库
+.dsh-acl-recovery/
+
+# 兜底：真正的规则在各子项目的 .gitignore（frontend/、backend/）
+node_modules/
+.venv/
+__pycache__/
+*.log
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
