@@ -6,6 +6,7 @@ import type { UseWebSocketResult } from "./useWebSocket";
 const MAX_IMAGE_EDGE = 1024;
 const JPEG_QUALITY = 0.75;
 const CAMERA_READY_TIMEOUT_MS = 8_000;
+const HAVE_METADATA = 1;
 
 export interface UseVisionCameraResult {
     enabled: Readonly<ReturnType<typeof ref<boolean>>>;
@@ -34,7 +35,7 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 function waitForVideo(video: HTMLVideoElement): Promise<void> {
-    if (video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth > 0) {
+    if (video.readyState >= HAVE_METADATA && video.videoWidth > 0) {
         return Promise.resolve();
     }
 
