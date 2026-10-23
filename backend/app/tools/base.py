@@ -16,6 +16,8 @@ class ToolContext:
     settings: Settings
     session_id: str
     lifecycle: Any = None
+    request_id: str = ""
+    camera_broker: Any = None
 
 
 @dataclass

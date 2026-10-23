@@ -1,4 +1,12 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, type OpenDialogOptions } from "electron";
+import {
+    app,
+    BrowserWindow,
+    dialog,
+    ipcMain,
+    session,
+    shell,
+    type OpenDialogOptions,
+} from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -108,6 +116,42 @@ function createWindow() {
 
     mainWindow.on("closed", () => {
         mainWindow = null;
+    });
+}
+
+/**
+ * 只允许主窗口申请视频权限。
+ *
+ * 摄像头授权还需要用户点击顶栏按钮；这里拦的是 Electron 的媒体权限层，
+ * 避免页面里的其他脚本顺带申请麦克风或让未知窗口拿到摄像头。
+ */
+function installCameraPermissions(): void {
+    const ses = session.defaultSession;
+
+    ses.setPermissionRequestHandler((webContents, permission, callback, details) => {
+        const ownWindow =
+            mainWindow !== null &&
+            !mainWindow.isDestroyed() &&
+            webContents.id === mainWindow.webContents.id;
+        if (permission !== "media" || !ownWindow) {
+            callback(false);
+            return;
+        }
+
+        const mediaTypes = "mediaTypes" in details ? (details.mediaTypes ?? []) : [];
+        callback(mediaTypes.includes("video") && !mediaTypes.includes("audio"));
+    });
+
+    ses.setPermissionCheckHandler((webContents, permission, _origin, details) => {
+        const ownWindow =
+            mainWindow !== null &&
+            !mainWindow.isDestroyed() &&
+            webContents?.id === mainWindow.webContents.id;
+        if (permission !== "media" || !ownWindow) {
+            return false;
+        }
+
+        return !("mediaType" in details) || details.mediaType !== "audio";
     });
 }
 
@@ -248,6 +292,7 @@ if (!hasSingleInstanceLock) {
         setupDialogs();
         setupBackend();
         setupPet();
+        installCameraPermissions();
         createWindow();
 
         app.on("activate", () => {

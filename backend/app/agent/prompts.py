@@ -22,13 +22,28 @@ _INFO_ROLE_HINT = """\
   不要说"我查一下"之类的过场话
 - 查不到就直说"""
 
+_VISION_ROLE_HINT = """\
+【当前可用：视觉观察】
+当用户询问你眼前看到了什么、用户正在做什么或周围环境，
+或只有看一帧当前画面才能准确回答时，可以调用 look_through_camera。
+- 普通闲聊、情绪陪伴和不需要当前画面的知识问题不要调用
+- 每次用户请求最多看一眼
+- 工具没有拿到画面时要直接说明没看清，不要臆测
+- 只使用工具返回的观察，不把不确定内容说成事实"""
 
-def build_chat_prompt(persona_prompt: str) -> str:
+
+def build_chat_prompt(
+    persona_prompt: str,
+    *,
+    vision_available: bool = False,
+) -> str:
     """闲聊专家：人格 + 情绪格式。"""
 
     parts: list[str] = []
     if persona_prompt:
         parts.append(persona_prompt)
+    if vision_available:
+        parts.append(_VISION_ROLE_HINT)
     parts.append(EMOTION_INSTRUCTION)
     return "\n\n".join(parts)
 

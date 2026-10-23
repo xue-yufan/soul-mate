@@ -495,6 +495,46 @@ async def test_runner_chat_expert_never_receives_tools(tmp_settings):
     assert adapter.calls[0]["tools"] is None
 
 
+class AvailableCameraBroker:
+    def has_camera_client(self) -> bool:
+        return True
+
+
+async def test_runner_chat_expert_receives_camera_tool_when_available(
+    tmp_settings,
+):
+    """自主观望是闲聊专家的一项能力，不该被错误路由到信息查询。"""
+
+    schema = {
+        "type": "function",
+        "function": {
+            "name": "look_through_camera",
+            "description": "看一眼当前画面",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    }
+    adapter = ToolsRecordingAdapter(deltas=["嗯"])
+    runner = AgentRunner(
+        graph=build_graph(),
+        adapter=adapter,
+        persona_prompt="你是测试人格。",
+        settings=tmp_settings,
+        openai_schemas=[schema],
+    )
+
+    events = [
+        event
+        async for event in runner.run(
+            "你看看我",
+            camera_broker=AvailableCameraBroker(),
+        )
+    ]
+
+    assert events[-1].type == "run_finished"
+    assert adapter.calls[0]["tools"] == [schema]
+    assert "【当前可用：视觉观察】" in adapter.calls[0]["messages"][0].content
+
+
 async def test_runner_info_expert_receives_tools(tmp_settings):
     """契约：工具给信息查询专家（她的提示词里承诺了会去查）"""
 
@@ -551,6 +591,83 @@ class FixedTimeTool(BaseTool):
 
     async def run(self, args, ctx) -> ToolResult:
         return ToolResult(ok=True, content="本地时间：12:00")
+
+
+class CountingCameraTool(BaseTool):
+    name = "look_through_camera"
+    description = "看一眼"
+    parameters = {
+        "type": "object",
+        "properties": {"question": {"type": "string"}},
+        "required": ["question"],
+    }
+    risk_level = "safe"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def run(self, args, ctx) -> ToolResult:
+        self.calls += 1
+        return ToolResult(ok=True, content="看到用户坐在桌前")
+
+
+async def test_tool_node_allows_only_one_camera_look_per_turn(
+    tmp_settings,
+    monkeypatch,
+):
+    """模型即使请求两次，第二轮也只能拿到拒绝结果，不能连续开摄像头。"""
+
+    from app.agent.nodes import tool_node
+    from app.tools import ToolRegistry
+
+    camera_tool = CountingCameraTool()
+    registry = ToolRegistry()
+    registry.register(camera_tool)
+    monkeypatch.setattr("app.tools.get_registry", lambda: registry)
+
+    tool_calls = [
+        {
+            "id": "cam-1",
+            "name": "look_through_camera",
+            "args": {"question": "看什么"},
+        },
+        {
+            "id": "cam-2",
+            "name": "look_through_camera",
+            "args": {"question": "再看一次"},
+        },
+    ]
+    events: list[tuple[str, dict]] = []
+
+    async def on_tool_event(event_type: str, data: dict) -> None:
+        events.append((event_type, data))
+
+    result = await tool_node(
+        {
+            "messages": [AIMessage(content="", tool_calls=tool_calls)],
+            "tool_steps": 0,
+            "camera_looks": 0,
+        },
+        {
+            "configurable": {
+                "settings": tmp_settings,
+                "session_id": "default",
+                "request_id": "turn-1",
+                "on_tool_event": on_tool_event,
+            }
+        },
+    )
+
+    assert camera_tool.calls == 1
+    assert result["camera_looks"] == 1
+    assert "看到用户坐在桌前" in result["messages"][0].content
+    assert "已经看过一次" in result["messages"][1].content
+    rejected = [
+        data
+        for event_type, data in events
+        if event_type == "tool_result" and not data["ok"]
+    ]
+    assert len(rejected) == 1
 
 
 async def test_runner_info_tool_loop_returns_to_info(

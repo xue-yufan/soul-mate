@@ -167,6 +167,7 @@ async def _run_expert(
     expert: str,
     system_prompt: str,
     use_tools: bool = True,
+    tool_allowlist: set[str] | None = None,
 ) -> dict[str, Any]:
     """
     专家节点的公共实现：组 prompt、调模型流式生成、解析情绪、收集工具调用。
@@ -202,6 +203,7 @@ async def _run_expert(
     settings = cfg.get("settings")
     exclude_message_id = cfg.get("exclude_message_id")
     openai_schemas = cfg.get("openai_schemas") or []
+    camera_broker = cfg.get("camera_broker")
 
     # 入口检查：已经停机就直接返回
     if should_stop is not None and should_stop():
@@ -309,8 +311,23 @@ async def _run_expert(
     # ---------- 工具决策 ----------
     tool_steps = state.get("tool_steps", 0)
     max_steps = settings.agent.max_tool_steps if settings else 0
-    tools_on = use_tools and bool(openai_schemas) and tool_steps < max_steps
-    tools_param = openai_schemas if tools_on else None
+    camera_available = bool(
+        camera_broker is not None
+        and camera_broker.has_camera_client()
+    )
+    tool_schemas: list[dict[str, Any]] = []
+    for schema in openai_schemas:
+        function = schema.get("function") if isinstance(schema, dict) else None
+        name = function.get("name") if isinstance(function, dict) else None
+        if not isinstance(name, str):
+            continue
+        if name == "look_through_camera" and not camera_available:
+            continue
+        if tool_allowlist is not None and name not in tool_allowlist:
+            continue
+        tool_schemas.append(schema)
+    tools_on = use_tools and bool(tool_schemas) and tool_steps < max_steps
+    tools_param = tool_schemas if tools_on else None
 
     # ---------- 调模型 ----------
 
@@ -525,12 +542,29 @@ async def chat_node(
 
     from app.agent.prompts import build_chat_prompt
 
+    schemas = cfg.get("openai_schemas") or []
+    camera_broker = cfg.get("camera_broker")
+    vision_available = bool(
+        camera_broker is not None
+        and camera_broker.has_camera_client()
+        and any(
+            isinstance(schema, dict)
+            and isinstance(schema.get("function"), dict)
+            and schema["function"].get("name") == "look_through_camera"
+            for schema in schemas
+        )
+    )
+
     return await _run_expert(
         state,
         config,
         expert="chat",
-        system_prompt=build_chat_prompt(persona_prompt),
-        use_tools=False,
+        system_prompt=build_chat_prompt(
+            persona_prompt,
+            vision_available=vision_available,
+        ),
+        use_tools=vision_available,
+        tool_allowlist={"look_through_camera"},
     )
 
 
@@ -587,6 +621,7 @@ async def tool_node(
     request_id = cfg.get("request_id") or ""
     on_tool_event = cfg.get("on_tool_event")
     pending_registry = cfg.get("pending_registry")
+    camera_broker = cfg.get("camera_broker")
     persona = cfg.get("persona")
     on_token = cfg.get("on_token")
 
@@ -604,6 +639,7 @@ async def tool_node(
         return {}
 
     tool_steps = state.get("tool_steps", 0)
+    camera_looks = state.get("camera_looks", 0)
     if tool_steps >= settings.agent.max_tool_steps:
         logger.warning(
             "工具步数超限 request_id=%s steps=%d",
@@ -621,6 +657,8 @@ async def tool_node(
         settings=settings,
         session_id=session_id,
         lifecycle=cfg.get("lifecycle"),
+        request_id=request_id,
+        camera_broker=camera_broker,
     )
 
     # ---------- 阶段 1：串行权限检查 ----------
@@ -657,6 +695,24 @@ async def tool_node(
                 "tool": tool_name,
                 "args": args,
             })
+
+        if tool_name == "look_through_camera" and camera_looks >= 1:
+            msg = "本轮已经看过一次，不能重复抓取摄像头"
+            rejected_results.append((
+                idx,
+                ToolMessage(content=msg, tool_call_id=tool_call_id),
+            ))
+            if on_tool_event:
+                await on_tool_event("tool_result", {
+                    "request_id": request_id,
+                    "tool_call_id": tool_call_id,
+                    "tool": tool_name,
+                    "ok": False,
+                    "error": msg,
+                })
+            continue
+        if tool_name == "look_through_camera":
+            camera_looks += 1
 
         tool = registry.get(tool_name)
         if tool is None:
@@ -834,6 +890,7 @@ async def tool_node(
     out: dict[str, Any] = {
         "messages": results,
         "tool_steps": tool_steps + 1,
+        "camera_looks": camera_looks,
     }
     if halted:
         out["halt"] = True

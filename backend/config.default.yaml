@@ -63,6 +63,7 @@ contracts:
 # 各模块自己的 *.enabled 字段已删除——代码里从来只读这里。
 features:
   tools: false
+  vision: true
   memory: false
   rag: false
   tts: false
@@ -121,9 +122,22 @@ memory:
 tools:
   allowed_dirs: []               # read_file 白名单，空表示不限
 
+vision:
+  # 只在本机使用。视觉能力还需要前端用户明确开启摄像头。
+  base_url: http://127.0.0.1:11434
+  model: qwen3-vl:4b
+  timeout_s: 120                 # 视觉模型首次加载可能较慢
+  capture_timeout_s: 20          # 等待前端抓一帧的上限
+  max_image_bytes: 2000000       # Base64 解码后单张图片上限
+  num_ctx: 4096                  # 单帧观察不需要模型标称的 256K 上下文
+  num_predict: 1024              # 这里包含模型默认 thinking 的预算
+  keep_alive: 2m                 # 用完两分钟自动卸载，给 3D 桌宠让出显存
+
 permission:
   default: confirm               # allow / confirm / deny
-  overrides: {}                  # 按工具名覆盖，例：{"read_file": "allow"}
+  overrides:
+    # 摄像头页上的显式开关就是授权；每次让 Agent 再弹一次确认会让自主观察失去意义。
+    look_through_camera: allow
   confirm_timeout_s: 30.0        # 超时未回应按拒绝处理
 
 rag:

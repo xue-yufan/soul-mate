@@ -32,6 +32,9 @@ class AgentState(TypedDict, total=False):
     # 工具调用步数，每次 tool_node 执行 +1
     tool_steps: int
 
+    # 本轮摄像头观察次数；即使抓帧失败也计数，防止模型反复重试
+    camera_looks: int
+
     # 错误信息，供 runner 判断
     error: str | None
 

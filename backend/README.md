@@ -116,6 +116,7 @@ export SOUL_MATE_COST__BUDGET=30.0
 | `features.memory` | `false` | 记忆总开关 |
 | `features.rag` | `false` | RAG + worldbook 总开关 |
 | `features.tools` | `false` | 工具总开关 |
+| `features.vision` | `true` | 摄像头视觉观察总开关；仍需用户在客户端开启摄像头 |
 | `features.tts` | `false` | TTS 总开关 |
 | `memory.top_k` | `10` | 记忆召回条数 |
 | `memory.time_decay_days` | `30` | 时间衰减半衰期 |
@@ -125,9 +126,27 @@ export SOUL_MATE_COST__BUDGET=30.0
 | `rag.worldbook_keyword_boost` | `0.3` | 关键词命中加权 |
 | `permission.default` | `confirm` | 默认决策 |
 | `permission.confirm_timeout_s` | `30.0` | 确认超时秒数 |
+| `vision.model` | `qwen3-vl:4b` | 本机 Ollama 视觉模型 |
+| `vision.base_url` | `http://127.0.0.1:11434` | 本机视觉服务地址 |
+| `vision.capture_timeout_s` | `20` | 等待客户端抓帧秒数 |
+| `vision.num_ctx` | `4096` | 单帧观察上下文 |
 | `tts.provider` | `edge` | TTS 提供方 |
 | `tts.voice` | `zh-CN-XiaoxiaoNeural` | 音色 |
 | `tts.max_chars_per_turn` | `2000` | 单轮 TTS 字符上限 |
+
+### 摄像头视觉观察
+
+Agent 只有在客户端通过 `client_hello` 声明 `camera` 能力，并且用户主动打开
+摄像头后，才会看到 `look_through_camera` 工具。工具执行时会向前端请求一帧，
+交给 Ollama 的 `qwen3-vl:4b` 生成文字观察，再把观察结果作为普通工具结果交回
+主对话 Agent。原图不落库。
+
+启动前确认本机服务与模型：
+
+```bash
+ollama list
+ollama run qwen3-vl:4b
+```
 
 ### 切换到 Ollama
 
@@ -332,6 +351,8 @@ AG-UI 事件流。所有消息为 JSON 文本帧，统一信封：
 | `echo` | `{text}` | 回显 |
 | `text_input` | `{text}` | 文本输入，触发 Agent |
 | `tool_confirm` | `{confirm_id, allowed}` | 回复工具确认 |
+| `client_hello` | `{capabilities}` | 声明客户端能力，目前支持 `camera` |
+| `camera_capture_result` | `{capture_id, ok, mime_type, image, error}` | 回传单帧图片或抓帧错误 |
 
 #### 服务端 → 客户端
 
@@ -347,6 +368,7 @@ AG-UI 事件流。所有消息为 JSON 文本帧，统一信封：
 | `tool_confirm_request` | `{request_id, tool_call_id, confirm_id, tool, args, timeout_s}` | 请求用户确认 |
 | `tool_result` | `{request_id, tool_call_id, tool, ok, content, error, meta}` | 工具执行结果 |
 | `tool_denied` | `{request_id, tool_call_id, tool, reason}` | 权限拒绝 |
+| `camera_capture_request` | `{capture_id, question, reason, timeout_s}` | Agent 请求前端抓取单帧 |
 | `tts_audio_chunk` | `{audio, format, text, index}` | 一段音频（base64） |
 | `tts_finished` | `{chunks, chars}` | TTS 本轮结束 |
 | `error` | `{code, message}` | 错误 |

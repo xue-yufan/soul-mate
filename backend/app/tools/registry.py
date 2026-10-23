@@ -59,15 +59,19 @@ def reset_registry() -> None:
     _registry = None
 
 
-def register_builtin_tools() -> None:
+def register_builtin_tools(*, include_vision: bool = False) -> None:
     """注册所有内置工具。启动时调用一次"""
 
     from app.tools.builtin.get_time import get_time_tool
     from app.tools.builtin.get_weather import get_weather_tool
+    from app.tools.builtin.look_through_camera import look_through_camera_tool
     from app.tools.builtin.read_file import read_file_tool
 
     registry = get_registry()
-    for tool in (get_time_tool, get_weather_tool, read_file_tool):
+    builtins = [get_time_tool, get_weather_tool, read_file_tool]
+    if include_vision:
+        builtins.append(look_through_camera_tool)
+    for tool in builtins:
         if tool.name not in registry.names():
             registry.register(tool)
     logger.info("内置工具已注册：%s", registry.names())

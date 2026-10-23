@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import json
 import re
 from typing import Any
@@ -484,6 +485,7 @@ async def _handle_text_input(
             exclude_message_id=user_msg_id,
             on_tool_event=on_tool_event,
             pending_registry=pending_registry,
+            camera_broker=getattr(app_state, "camera_broker", None),
         ):
             if event.type == "text_delta":
                 await send_event(
@@ -763,6 +765,190 @@ async def _handle_tool_confirm(
     logger.info("工具确认已处理：confirm_id=%s allowed=%s", confirm_id, allowed)
 
 
+async def _handle_client_hello(
+    sender: WsSender,
+    msg: dict[str, Any],
+    *,
+    version: int,
+) -> None:
+    """登记客户端能力；当前只关心摄像头。"""
+
+    req_id = msg.get("request_id")
+    data = msg.get("data")
+    if not isinstance(data, dict):
+        await send_error(
+            sender,
+            WsErrorCode.BAD_REQUEST,
+            "data 必须是对象",
+            version=version,
+            request_id=req_id,
+        )
+        return
+
+    capabilities = data.get("capabilities", [])
+    if not isinstance(capabilities, list) or not all(
+        isinstance(item, str) for item in capabilities
+    ):
+        await send_error(
+            sender,
+            WsErrorCode.BAD_REQUEST,
+            "data.capabilities 必须是字符串数组",
+            version=version,
+            request_id=req_id,
+        )
+        return
+
+    broker = getattr(sender.app_state, "camera_broker", None)
+    if broker is not None:
+        broker.register(sender, capabilities)
+    logger.info(
+        "客户端能力已更新：client=%s capabilities=%s",
+        sender.client,
+        capabilities,
+    )
+
+
+async def _handle_camera_capture_result(
+    sender: WsSender,
+    msg: dict[str, Any],
+    *,
+    version: int,
+) -> None:
+    """接收前端抓帧结果并唤醒等待中的摄像头工具。"""
+
+    req_id = msg.get("request_id")
+    data = msg.get("data")
+    if not isinstance(data, dict):
+        await send_error(
+            sender,
+            WsErrorCode.BAD_REQUEST,
+            "data 必须是对象",
+            version=version,
+            request_id=req_id,
+        )
+        return
+
+    capture_id = data.get("capture_id")
+    ok = data.get("ok")
+    if not isinstance(capture_id, str) or not capture_id.strip():
+        await send_error(
+            sender,
+            WsErrorCode.BAD_REQUEST,
+            "data.capture_id 必须是非空字符串",
+            version=version,
+            request_id=req_id,
+        )
+        return
+    if not isinstance(ok, bool):
+        await send_error(
+            sender,
+            WsErrorCode.BAD_REQUEST,
+            "data.ok 必须是布尔值",
+            version=version,
+            request_id=req_id,
+        )
+        return
+
+    broker = getattr(sender.app_state, "camera_broker", None)
+    if broker is None:
+        await send_error(
+            sender,
+            WsErrorCode.INTERNAL_ERROR,
+            "摄像头通道未初始化",
+            version=version,
+            request_id=req_id,
+        )
+        return
+
+    if not ok:
+        error = data.get("error")
+        broker.resolve(
+            sender,
+            capture_id,
+            ok=False,
+            error=error if isinstance(error, str) else "",
+        )
+        return
+
+    mime_type = data.get("mime_type")
+    image = data.get("image")
+    if mime_type not in {"image/jpeg", "image/png", "image/webp"}:
+        broker.resolve(
+            sender,
+            capture_id,
+            ok=False,
+            error="不支持的图片类型",
+        )
+        await send_error(
+            sender,
+            WsErrorCode.BAD_REQUEST,
+            "图片类型必须是 JPEG、PNG 或 WebP",
+            version=version,
+            request_id=req_id,
+        )
+        return
+    if not isinstance(image, str) or not image:
+        broker.resolve(
+            sender,
+            capture_id,
+            ok=False,
+            error="摄像头没有返回图片",
+        )
+        await send_error(
+            sender,
+            WsErrorCode.BAD_REQUEST,
+            "data.image 必须是非空 Base64 字符串",
+            version=version,
+            request_id=req_id,
+        )
+        return
+
+    try:
+        image_bytes = base64.b64decode(image, validate=True)
+    except (ValueError, binascii.Error):
+        broker.resolve(
+            sender,
+            capture_id,
+            ok=False,
+            error="图片编码无效",
+        )
+        await send_error(
+            sender,
+            WsErrorCode.BAD_REQUEST,
+            "图片不是合法 Base64",
+            version=version,
+            request_id=req_id,
+        )
+        return
+
+    max_bytes = sender.app_state.settings.vision.max_image_bytes
+    if len(image_bytes) > max_bytes:
+        broker.resolve(
+            sender,
+            capture_id,
+            ok=False,
+            error="图片过大",
+        )
+        await send_error(
+            sender,
+            WsErrorCode.BAD_REQUEST,
+            f"图片过大，上限 {max_bytes} 字节",
+            version=version,
+            request_id=req_id,
+        )
+        return
+
+    resolved = broker.resolve(
+        sender,
+        capture_id,
+        ok=True,
+        image=image_bytes,
+        mime_type=mime_type,
+    )
+    if not resolved:
+        logger.info("摄像头结果已过期：capture_id=%s", capture_id)
+
+
 # ---------- 分发 ----------
 
 async def handle_message(
@@ -825,6 +1011,14 @@ async def handle_message(
 
     if mtype == "tool_confirm":
         await _handle_tool_confirm(sender, msg, version=version)
+        return
+
+    if mtype == "client_hello":
+        await _handle_client_hello(sender, msg, version=version)
+        return
+
+    if mtype == "camera_capture_result":
+        await _handle_camera_capture_result(sender, msg, version=version)
         return
 
     await send_error(
@@ -949,5 +1143,8 @@ async def ws_endpoint(websocket: WebSocket) -> None:
         if turn_task is not None:
             await _cancel_and_drain(turn_task)
         await _cancel_and_drain(shutdown_task)
+        broker = getattr(websocket.app.state, "camera_broker", None)
+        if broker is not None:
+            broker.unregister(sender)
         lifecycle.unregister_ws(sender)
         await sender.close(code=1001)

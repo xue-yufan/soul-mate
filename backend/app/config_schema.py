@@ -76,6 +76,7 @@ GROUPS: tuple[GroupSpec, ...] = (
     GroupSpec("model", "模型", "用哪个模型，以及怎么连上它。"),
     GroupSpec("memory", "记忆", "她长期记住什么，以及能不能翻你的资料。"),
     GroupSpec("tools", "工具", "她能调用什么，以及动手前要不要先问你。"),
+    GroupSpec("vision", "视觉", "让她在需要时看一眼摄像头，再由本地视觉模型描述当前画面。"),
     GroupSpec("agent", "对话", "每轮带多少历史，什么时候开始压缩。"),
 )
 
@@ -230,6 +231,47 @@ FIELDS: tuple[FieldSpec, ...] = (
     FieldSpec(
         "features.tools", "工具调用", "tools", "bool",
         help="允许她使用读文件、看时间这类工具。",
+    ),
+    FieldSpec(
+        "features.vision", "允许自主看一眼", "vision", "bool",
+        help="开启后，她可以在需要理解眼前画面时请求抓取一帧；仍需在顶部打开摄像头授权。",
+    ),
+    FieldSpec(
+        "vision.model", "视觉模型", "vision", "str",
+        help="本机已安装的视觉模型名称，例如 qwen3-vl:4b。",
+    ),
+    FieldSpec(
+        "vision.base_url", "本机视觉服务", "vision", "str",
+        help="默认连接本机 Ollama，一般保持 http://127.0.0.1:11434。",
+    ),
+    FieldSpec(
+        "vision.timeout_s", "观察超时", "vision", "float",
+        unit="秒", min=5, max=600, step=5,
+        help="视觉模型首次加载较慢，超时后本轮会退回文字回复。",
+    ),
+    FieldSpec(
+        "vision.capture_timeout_s", "等待抓帧", "vision", "float",
+        unit="秒", min=3, max=120, step=1,
+        help="摄像头窗口未响应时最多等多久。",
+    ),
+    FieldSpec(
+        "vision.max_image_bytes", "单帧大小上限", "vision", "int",
+        unit="字节", min=100000, max=10000000, step=100000,
+        help="压缩后的摄像头图片超过此大小时不会发给视觉模型。",
+    ),
+    FieldSpec(
+        "vision.num_ctx", "视觉上下文", "vision", "int",
+        min=1024, max=32768, step=1024,
+        help="单帧观察通常 4096 足够；设置过大只会增加内存占用。",
+    ),
+    FieldSpec(
+        "vision.num_predict", "观察输出上限", "vision", "int",
+        min=64, max=2048, step=64,
+        help="限制视觉模型的思考与观察输出，避免一次看画面拖得太久。",
+    ),
+    FieldSpec(
+        "vision.keep_alive", "模型闲置保留", "vision", "str",
+        help="例如 2m；闲置后自动卸载，减少对 3D 桌宠的显存占用。",
     ),
     FieldSpec(
         "tools.allowed_dirs", "允许她读取的目录", "tools", "lines",

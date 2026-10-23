@@ -32,6 +32,7 @@ from app.storage.session import ensure_session
 from app.tools import get_registry, register_builtin_tools
 from app.tts import build_tts
 from app.tts.engine import TtsEngine
+from app.vision import CameraBroker
 
 logger = get_logger(__name__)
 
@@ -98,6 +99,7 @@ async def lifespan(app: FastAPI):
         ws_notify_delay=settings.server.ws_notify_delay_s,
     )
     app.state.lifecycle = lifecycle
+    app.state.camera_broker = CameraBroker()
 
     # 父进程看门狗：Electron 挂掉（正常关、崩溃、被强杀）后自己退出，避免变成孤儿进程占着端口
     watchdog_task = start_parent_watchdog(lifecycle.shutdown)
@@ -161,13 +163,16 @@ async def lifespan(app: FastAPI):
 
     # 注册工具
     if settings.features.tools:
-        register_builtin_tools()
+        register_builtin_tools(
+            include_vision=settings.features.vision,
+        )
         registry = get_registry()
         openai_schemas = registry.to_openai_schemas()
         logger.info("工具已启用：%s", registry.names())
     else:
         openai_schemas = []
         logger.info("工具未启用（features.tools=false）")
+    app.state.openai_schemas = openai_schemas
 
     # Agent 图与 runner
     graph = build_graph()

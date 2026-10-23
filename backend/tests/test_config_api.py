@@ -188,6 +188,7 @@ def test_public_config_has_settings_metadata(api: TestClient) -> None:
 
     paths = {f["path"] for f in settings["fields"]}
     assert "features.tts" in paths
+    assert "features.vision" in paths
     assert "model.api_key" in paths
 
 

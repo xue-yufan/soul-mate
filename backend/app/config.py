@@ -111,6 +111,7 @@ class FeaturesConfig(BaseModel):
     """
 
     tools: bool = False
+    vision: bool = True
     memory: bool = False
     rag: bool = False
     tts: bool = False
@@ -234,6 +235,23 @@ class ToolsConfig(BaseModel):
     # 原有一个 enabled 字段，但代码里只读 features.tools，已删除。
 
 
+class VisionConfig(BaseModel):
+    """本机视觉观察配置。
+
+    视觉模型只负责看图并返回观察摘要，不参与人格回复。默认连接 Ollama 的
+    本机接口；模型不存在或服务未启动时，摄像头工具会返回可降级的错误。
+    """
+
+    base_url: str = "http://127.0.0.1:11434"
+    model: str = "qwen3-vl:4b"
+    timeout_s: float = 120.0
+    capture_timeout_s: float = 20.0
+    max_image_bytes: int = 2_000_000
+    num_ctx: int = 4096
+    num_predict: int = 1024
+    keep_alive: str = "2m"
+
+
 class PermissionConfig(BaseModel):
     """权限控制配置"""
 
@@ -346,6 +364,7 @@ class Settings(BaseSettings):
     embedding: EmbeddingConfig = EmbeddingConfig()
     memory: MemoryConfig = MemoryConfig()
     tools: ToolsConfig = ToolsConfig()
+    vision: VisionConfig = VisionConfig()
     permission: PermissionConfig = PermissionConfig()
     rag: RagConfig = RagConfig()
     tts: TtsConfig = TtsConfig()

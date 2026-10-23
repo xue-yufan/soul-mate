@@ -66,6 +66,7 @@ export interface PublicConfig {
         memory: boolean;
         rag: boolean;
         tools: boolean;
+        vision: boolean;
         tts: boolean;
     };
     model: {

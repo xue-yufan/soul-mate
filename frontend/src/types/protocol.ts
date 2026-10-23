@@ -42,7 +42,34 @@ export interface ToolConfirmPayload {
     data: { confirm_id: string; allowed: boolean };
 }
 
-export type ClientMessage = PingPayload | TextInputPayload | ToolConfirmPayload;
+export type CameraCapability = "camera";
+
+export interface ClientHelloPayload {
+    v: ProtocolVersion;
+    type: "client_hello";
+    request_id?: string;
+    data: { capabilities: CameraCapability[] };
+}
+
+export interface CameraCaptureResultPayload {
+    v: ProtocolVersion;
+    type: "camera_capture_result";
+    request_id: string;
+    data: {
+        capture_id: string;
+        ok: boolean;
+        mime_type?: string;
+        image?: string;
+        error?: string;
+    };
+}
+
+export type ClientMessage =
+    | PingPayload
+    | TextInputPayload
+    | ToolConfirmPayload
+    | ClientHelloPayload
+    | CameraCaptureResultPayload;
 
 // ---------- 服务端 → 客户端 ----------
 
@@ -152,6 +179,19 @@ export interface ToolDeniedData {
 }
 export type ToolDeniedEvent = Envelope<"tool_denied", ToolDeniedData>;
 
+// camera_capture_request
+
+export interface CameraCaptureRequestData {
+    capture_id: string;
+    question: string;
+    reason: string;
+    timeout_s: number;
+}
+export type CameraCaptureRequestEvent = Envelope<
+    "camera_capture_request",
+    CameraCaptureRequestData
+>;
+
 // tts_audio_chunk
 
 export interface TtsAudioChunkData {
@@ -200,6 +240,7 @@ export type ServerEvent =
     | ToolConfirmRequestEvent
     | ToolResultEvent
     | ToolDeniedEvent
+    | CameraCaptureRequestEvent
     | TtsAudioChunkEvent
     | TtsFinishedEvent
     | ErrorEvent
@@ -224,6 +265,7 @@ export const SERVER_EVENT_TYPES: ReadonlySet<string> = new Set([
     "tool_confirm_request",
     "tool_result",
     "tool_denied",
+    "camera_capture_request",
     "tts_audio_chunk",
     "tts_finished",
     "error",

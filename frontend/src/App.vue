@@ -15,6 +15,19 @@
             <div class="topbar-right">
                 <button
                     class="icon-btn"
+                    :class="{ active: camera.enabled.value }"
+                    :disabled="
+                        !camera.supported.value ||
+                        ws.status.value !== 'connected' ||
+                        configState.config.value?.features.vision === false
+                    "
+                    :title="cameraText"
+                    @click="camera.toggle"
+                >
+                    <AppIcon name="camera" />
+                </button>
+                <button
+                    class="icon-btn"
                     :class="{ active: petRunning }"
                     :title="petText"
                     @click="onTogglePet"
@@ -59,7 +72,10 @@
         </main>
 
         <footer class="statusbar">
-            <span>{{ backendText }} · {{ wsText }} · {{ ttsText }} · {{ petText }}</span>
+            <span>
+                {{ backendText }} · {{ wsText }} · {{ ttsText }} · {{ petText }} ·
+                {{ camera.statusText.value }}
+            </span>
             <span class="version">v{{ appVersion }}</span>
         </footer>
 
@@ -91,6 +107,7 @@ import { useChat } from "@/composables/useChat";
 import { useConfig } from "@/composables/useConfig";
 import { useLocalSettings } from "@/composables/useLocalSettings";
 import { useTts } from "@/composables/useTts";
+import { useVisionCamera } from "@/composables/useVisionCamera";
 import { useWebSocket } from "@/composables/useWebSocket";
 import type { BackendSnapshot, PetSnapshot } from "@/types/electron";
 
@@ -165,6 +182,20 @@ const configState = useConfig();
 const ws = useWebSocket();
 const tts = useTts(localSettings.settings);
 const chat = useChat(ws, tts);
+const camera = useVisionCamera(ws);
+
+const cameraText = computed(() => {
+    if (configState.config.value?.features.vision === false) {
+        return "视觉能力已在设置中关闭";
+    }
+    if (camera.error.value) {
+        return `${camera.statusText.value}：${camera.error.value}`;
+    }
+    if (camera.enabled.value) {
+        return "视觉感知已开启；她可以在需要时抓取一帧";
+    }
+    return "开启视觉感知；她会在需要时自主判断是否看一眼";
+});
 
 const wsText = computed(() => {
     switch (ws.status.value) {

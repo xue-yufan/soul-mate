@@ -26,6 +26,7 @@ router = APIRouter(prefix="/config", tags=["config"])
 # 重建运行时即可立刻生效。
 _RESTART_REQUIRED_PATHS = {
     "features.tools",
+    "features.vision",
     "features.memory",
     "features.rag",
     "features.tts",
@@ -77,6 +78,7 @@ def _snapshot(settings: Settings) -> dict:
             "memory": settings.features.memory,
             "rag": settings.features.rag,
             "tools": settings.features.tools,
+            "vision": settings.features.vision,
             "tts": settings.features.tts,
         },
         "model": {

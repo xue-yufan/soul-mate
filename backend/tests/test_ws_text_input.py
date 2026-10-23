@@ -26,6 +26,7 @@ class FakeRunner:
         exclude_message_id=None,
         on_tool_event=None,
         pending_registry=None,
+        camera_broker=None,
     ):
         self.calls.append(
             {
@@ -33,6 +34,7 @@ class FakeRunner:
                 "request_id": request_id,
                 "session_id": session_id,
                 "exclude_message_id": exclude_message_id,
+                "camera_broker": camera_broker,
             }
         )
         for event in self.events:

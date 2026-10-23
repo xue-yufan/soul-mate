@@ -55,6 +55,14 @@
             <path d="M16.24 7.76l1.56-1.56" />
             <path d="M6.2 17.8l1.56-1.56" />
         </template>
+
+        <!-- 摄像头：机身 + 镜头 + 录制状态点 -->
+        <template v-else-if="name === 'camera'">
+            <rect x="3" y="7" width="13" height="11" rx="2.5" />
+            <path d="M16 11l4.4-2.2v7.4L16 14" />
+            <circle cx="9.5" cy="12.5" r="2.5" />
+            <circle cx="5.5" cy="9.5" r="0.7" fill="currentColor" stroke="none" />
+        </template>
     </svg>
 </template>
 
@@ -68,7 +76,7 @@
  * 悬停/激活变色的时候图标跟着变（emoji 变不了）。
  */
 defineProps<{
-    name: "paw" | "sound" | "mute" | "book" | "gear";
+    name: "paw" | "sound" | "mute" | "book" | "gear" | "camera";
 }>();
 </script>
 

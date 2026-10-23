@@ -27,6 +27,8 @@ def test_code_defaults_without_yaml(tmp_path, monkeypatch):
     assert settings.server.ws_path == "/ws"
     assert settings.contracts.ws_event_version == 1
     assert settings.features.memory is False
+    assert settings.features.vision is True
+    assert settings.vision.model == "qwen3-vl:4b"
 
 
 def test_yaml_overrides_code_defaults(tmp_path, monkeypatch):

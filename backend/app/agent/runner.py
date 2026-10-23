@@ -62,6 +62,7 @@ class AgentRunner:
         exclude_message_id: str | None = None,
         on_tool_event: Callable[[str, dict], Awaitable[None]] | None = None,
         pending_registry=None,
+        camera_broker=None,
     ) -> AsyncIterator[AgentEvent]:
         """执行一轮，逐事件产出"""
 
@@ -88,6 +89,7 @@ class AgentRunner:
                             "tokens_out": 0,
                             "model": self.settings.model.model,
                             "tool_steps": 0,
+                            "camera_looks": 0,
                             "error": None,
                         },
                         config={
@@ -108,6 +110,7 @@ class AgentRunner:
                                 "openai_schemas": self._openai_schemas,
                                 "on_tool_event": on_tool_event,
                                 "pending_registry": pending_registry,
+                                "camera_broker": camera_broker,
                             },
                         },
                     ),
